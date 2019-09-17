@@ -82,21 +82,32 @@ void print(Node *sl, int N, int MAX_LEVEL)
 
 int main()
 {
-	int N=1024*1024*16, MAX_LEVEL=25;
-//	cin >> N >> MAX_LEVEL;
-//	for(MAX_LEVEL=26;MAX_LEVEL<26;MAX_LEVEL++)
-//	{
-	Node *sl, *d_sl;
-	Node *data, *d_data;
-	struct timespec start, end, temp;
+	int N=1024*1024, MAX_LEVEL=21;
+	Node *sl, *data;
+	double time_used, sum=0;
 	cudaError_t err = cudaSuccess;
-	double time_used, sum = 0;
+    struct timespec start, end, temp;	
 	int loop;
-	
-	sl = (Node *)malloc(N * sizeof(Node) * MAX_LEVEL);
-	data = (Node *)malloc(N * sizeof(Node));
- 	for(loop=1;loop<2;loop++)
+	for(MAX_LEVEL=21;MAX_LEVEL<30;MAX_LEVEL++)
 	{
+ 	for(loop=1;loop<11;loop++)
+	{
+		clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);
+		
+		err = cudaMallocManaged(&sl, N * sizeof(Node) * MAX_LEVEL);
+		if(err != cudaSuccess)
+		{
+			fprintf(stderr, "Failed to malloc sl in loop %d : %s\n", loop, cudaGetErrorString(err));
+			exit(EXIT_FAILURE);
+		}
+
+		err = cudaMallocManaged(&data, N * sizeof(Node));
+		if(err != cudaSuccess)
+		{
+			fprintf(stderr, "Failed to malloc data in loop %d : %s\n", loop, cudaGetErrorString(err));
+			exit(EXIT_FAILURE);
+		}
+
 		for (int i = 0; i < N; i++)
 		{
 			data[i].key =i+1;
@@ -115,49 +126,9 @@ int main()
 			sl[i].nextLevel = -1;
 			sl[i].nextIdx = -1;
 		}
-
-		clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);
 	
-	//	size_t free, max;
-//		cudaMemGetInfo(&free, &max);
-  //    	cout << "free: " << free << " total: " << max << endl;
-
-		err = cudaMalloc(&d_data, N * sizeof(Node));
-		if (err != cudaSuccess) 
-		{
-     		//cout << "Failed to malloc data in loop " << loop << " : " << cudaGetErrorString(err);
-			fprintf(stderr, "Failed to malloc data in loop %d : %s\n", loop, cudaGetErrorString(err));
-      		exit(EXIT_FAILURE);
-    	}
-
-		err = cudaMalloc(&d_sl, N * sizeof(Node) * MAX_LEVEL * 2 );
-		if (err != cudaSuccess) 
-		{
-     		fprintf(stderr, "Failed to malloc sl in loop %d : %s\n", loop, cudaGetErrorString(err));
-     	    exit(EXIT_FAILURE);
-        }
-	
-	//	int memoryused = N * sizeof(Node) * MAX_LEVEL*2 + N * sizeof(Node);
-	//	cudaMemGetInfo(&free, &max);
-	//	cout << "free: " << free << " total: " << max << endl;
-	//	cout << "Memory Used: " << memoryused << endl;
-	//	cout << free + memoryused;
-
-		cudaMemcpy(d_data, data, N * sizeof(Node), cudaMemcpyHostToDevice);
-		if (err != cudaSuccess) 
-		{
-			fprintf(stderr, "Failed to copy data in loop %d : %s\n", loop, cudaGetErrorString(err));
-            exit(EXIT_FAILURE);
-    	}
-
-		cudaMemcpy(d_sl, sl, N * sizeof(Node) * MAX_LEVEL, cudaMemcpyHostToDevice);
-		if (err != cudaSuccess) 
-		{
-      		fprintf(stderr, "Failed to copy sl in loop %d : %s\n", loop, cudaGetErrorString(err));
-            exit(EXIT_FAILURE);
-        }
 		int block = N/1024;
-		assign <<< block, 1024 >>> (d_sl,d_data);
+		assign <<< block, 1024 >>> (sl,data);
 		err = cudaGetLastError();
 		if (err != cudaSuccess) 
 		{
@@ -165,7 +136,7 @@ int main()
             exit(EXIT_FAILURE);
         }
 
-		connect <<< block,1024 >>> (d_sl, N);
+		connect <<< block,1024 >>> (sl, N);
 		err = cudaGetLastError();
 		
 		if (err != cudaSuccess) 
@@ -173,31 +144,20 @@ int main()
     	    fprintf(stderr, "Failed to connect in loop %d : %s\n", loop, cudaGetErrorString(err));
             exit(EXIT_FAILURE);
         }
-
-		cudaMemcpy(sl, d_sl, N * sizeof(Node) * MAX_LEVEL, cudaMemcpyDeviceToHost);
-		if (err != cudaSuccess) 
-		{
-            fprintf(stderr, "Failed to memory copy back to host in loop %d : %s\n", loop, cudaGetErrorString(err));
-            exit(EXIT_FAILURE);
-        }
-
-		clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end);
+        
+		cudaFree(sl);
+		cudaFree(data);
+    	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end);
 		temp = diff(start, end);
 		time_used = 1000 * (temp.tv_sec + (double)temp.tv_nsec / 1000000000.0);
 		sum += time_used;
 
-		//print(sl, N, MAX_ELVEL);
-
-		cudaFree(d_sl);
-		cudaFree(d_data);
-		cout << "loop: " << loop << " time: " << time_used << endl;	
+		cout << "loop: " << loop << " time: " << time_used << endl;
+//		cout << sum << endl;
 	}
-
-	cout << "Data:" << N << endl << "Maxlevel: " << MAX_LEVEL << endl << sum/(loop-1) << endl << endl;
-	free(sl);
-	free(data);
-//	N=N*2;
-//	}
-//	system("pause");
+	cout << "Data:" << N << endl << "Maxlevel: " << MAX_LEVEL << endl << sum/10 << endl << endl;
+	N = N *2;
+	sum=0;
+	}
     return 0;
 }
